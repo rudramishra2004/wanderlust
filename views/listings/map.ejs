@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OSM Route Finder</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { height: 90vh; }
+    #searchBar {
+      padding: 10px;
+      background: white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+
+<div id="searchBar">
+  <input type="text" id="destination" placeholder="Enter destination address" size="40">
+  <button onclick="findRoute()">Get Route</button>
+</div>
+
+<div id="map"></div>
+
+<script>
+  let map, userMarker, routeLayer;
+  let userCoords;
+
+  // Initialize the map
+  map = L.map('map').setView([0, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Get current location
+  navigator.geolocation.getCurrentPosition(position => {
+    userCoords = [position.coords.latitude, position.coords.longitude];
+    map.setView(userCoords, 14);
+    userMarker = L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
+  }, () => {
+    alert("Could not get your location");
+  });
+
+  function findRoute() {
+    const destination = document.getElementById('destination').value;
+    if (!userCoords) {
+      alert("Waiting for current location...");
+      return;
+    }
+
+    // Geocode destination
+    const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination)}`;
+    fetch(geocodeUrl)
+      .then(res => res.json())
+      .then(data => {
+        if (!data || data.length === 0) {
+          alert("Destination not found.");
+          return;
+        }
+
+        const destLat = parseFloat(data[0].lat);
+        const destLon = parseFloat(data[0].lon);
+
+        // Draw marker
+        L.marker([destLat, destLon]).addTo(map).bindPopup(destination).openPopup();
+
+        // Build route URL
+        const routeUrl = `https://router.project-osrm.org/route/v1/driving/${userCoords[1]},${userCoords[0]};${destLon},${destLat}?overview=full&geometries=geojson`;
+
+        fetch(routeUrl)
+          .then(res => res.json())
+          .then(routeData => {
+            if (routeLayer) {
+              map.removeLayer(routeLayer);
+            }
+            const route = routeData.routes[0].geometry;
+            routeLayer = L.geoJSON(route, {
+              style: { color: 'blue', weight: 5 }
+            }).addTo(map);
+            map.fitBounds(routeLayer.getBounds());
+          });
+      });
+  }
+</script>
+
+</body>
+</html>
